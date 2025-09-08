@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reflection Nebula Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            background-color: #000005; /* Very dark blue background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas {
+            display: block; /* Remove potential extra space below canvas */
+        }
+        /* Optional: Add a subtle hint */
+        body::after {
+            content: "Move mouse to illuminate";
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.2);
+            font-family: sans-serif;
+            font-size: 12px;
+            pointer-events: none; /* So it doesn't interfere with mouse events on canvas */
+            animation: fadeInHint 3s ease-out forwards;
+            opacity: 0;
+        }
+        @keyframes fadeInHint {
+            from { opacity: 0; }
+            to { opacity: 0.2; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="nebulaCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('nebulaCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let particles = [];
+        const particleCount = Math.floor((width * height) / 5000); // Adjust density based on screen size
+        const baseParticleSize = 1.5;
+        const sizeVariation = 1.5;
+        const baseSpeed = 0.1;
+        const speedVariation = 0.2;
+        const trailAlpha = 0.08; // Lower for longer trails
+
+        // Nebula color palette (HSL format: Hue, Saturation, Lightness)
+        // Dominated by blues and purples, with some cyan/white for highlights
+        const colors = [
+            // Blues
+            { h: 180, s: 90, l: 60 }, { h: 190, s: 95, l: 65 }, { h: 200, s: 100, l: 70 },
+            { h: 210, s: 100, l: 65 }, { h: 220, s: 90, l: 60 },
+            // Purples
+            { h: 240, s: 80, l: 55 }, { h: 250, s: 85, l: 60 }, { h: 260, s: 90, l: 65 },
+             { h: 270, s: 75, l: 50 },
+            // Cyan/White highlights (used more near mouse)
+            { h: 180, s: 100, l: 85 }, { h: 190, s: 50, l: 95 },
+            // Hints of pink/magenta
+             { h: 300, s: 70, l: 60 }, { h: 320, s: 75, l: 65 }
+        ];
+
+        const mouse = {
+            x: width / 2,
+            y: height / 2,
+            radius: 200 // Area of influence
+        };
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = baseParticleSize + Math.random() * sizeVariation;
+                this.baseSpeedX = (Math.random() - 0.5) * speedVariation + Math.sign(Math.random() - 0.5) * baseSpeed;
+                this.baseSpeedY = (Math.random() - 0.5) * speedVariation + Math.sign(Math.random() - 0.5) * baseSpeed;
+                this.vx = this.baseSpeedX;
+                this.vy = this.baseSpeedY;
+                this.baseColor = colors[Math.floor(Math.random() * colors.length)];
+                this.opacity = 0.1 + Math.random() * 0.5; // Base opacity
+                this.targetOpacity = this.opacity;
+                this.color = `hsla(${this.baseColor.h}, ${this.baseColor.s}%, ${this.baseColor.l}%, ${this.opacity})`;
+                this.targetLightness = this.baseColor.l;
+                this.targetHue = this.baseColor.h;
+            }
+
+            update() {
+                // Interaction with mouse (the "star")
+                const dx = this.x - mouse.x;
+                const dy = this.y - mouse.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const influenceRadius = mouse.radius * (1 + this.size / baseParticleSize); // Larger particles affected slightly further
+
+                let forceX = 0;
+                let forceY = 0;
+
+                if (distance < influenceRadius) {
+                    const force = (influenceRadius - distance) / influenceRadius; // 0 to 1
+                    const angle = Math.atan2(dy, dx);
+
+                    // Gentle pull/push outwards and slight swirl
+                    const repelForce = force * 0.1; // Adjust for stronger/weaker effect
+                    forceX += Math.cos(angle) * repelForce;
+                    forceY += Math.sin(angle) * repelForce;
+
+                    // Make particles brighter and slightly bluer/whiter near the mouse
+                    this.targetLightness = Math.min(95, this.baseColor.l + force * (95 - this.baseColor.l)); // Increase lightness up to 95
+                    // Shift hue slightly towards cyan/blue (around 180-220)
+                     const targetBlueHue = 180 + Math.random() * 40;
+                     this.targetHue = this.baseColor.h + (targetBlueHue - this.baseColor.h) * force * 0.5; // Shift halfway
+                    this.targetOpacity = Math.min(1, this.opacity + force * 0.5); // Increase opacity
+
+                } else {
+                    // Gradually return to base state when mouse is far
+                    this.targetLightness = this.baseColor.l;
+                    this.targetHue = this.baseColor.h;
+                    this.targetOpacity = this.opacity;
+                }
+
+                 // Smooth transition for color/opacity changes
+                 this.currentLightness = lerp(this.currentLightness || this.baseColor.l, this.targetLightness, 0.1);
+                 this.currentHue = lerp(this.currentHue || this.baseColor.h, this.targetHue, 0.1);
+                 this.currentOpacity = lerp(this.currentOpacity || this.opacity, this.targetOpacity, 0.1);
+
+
+                // Update velocity with base speed and mouse influence
+                this.vx = this.baseSpeedX + forceX;
+                this.vy = this.baseSpeedY + forceY;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Boundary checks (wrap around)
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+
+                 this.color = `hsla(${this.currentHue}, ${this.baseColor.s}%, ${this.currentLightness}%, ${this.currentOpacity})`;
+
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function animate() {
+            // Draw semi-transparent background for trails
+            ctx.fillStyle = `rgba(0, 0, 5, ${trailAlpha})`;
+            ctx.fillRect(0, 0, width, height);
+
+            // Optional: Add 'lighter' composite operation for blooming effect
+            // ctx.globalCompositeOperation = 'lighter';
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // Reset composite operation if changed
+            // ctx.globalCompositeOperation = 'source-over';
+
+            requestAnimationFrame(animate);
+        }
+
+        // Linear interpolation function for smooth transitions
+        function lerp(start, end, amount) {
+             return start + (end - start) * amount;
+        }
+
+
+        // Event Listeners
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            // Re-initialize or just update mouse influence radius? Re-initializing gives better density distribution.
+            mouse.radius = Math.min(width, height) * 0.15; // Adjust influence based on screen size
+             particleCount = Math.floor((width * height) / 5000); // Recalculate count
+            init();
+        });
+
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = event.clientX;
+            mouse.y = event.clientY;
+        });
+
+         window.addEventListener('mouseout', () => {
+             // Optional: Send mouse far away or to center when it leaves the window
+             mouse.x = width * 10; // Move influence far off-screen
+             mouse.y = height * 10;
+         });
+
+        // Start simulation
+        init();
+        animate();
+    </script>
+</body>
+</html>

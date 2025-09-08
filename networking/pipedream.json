@@ -1,0 +1,125 @@
+{
+  "org_id": "o_8LIGJ83",
+  "project_id": "proj_lgspYMD",
+  "steps": [
+    {
+      "namespace": "generate_fishing_script",
+      "props": {
+        "app": null,
+        "modelId": "gpt-4.1",
+        "userMessage": "You are the most influential short-form video creator specializing in fishing content. Create a 60-second direct-to-camera talking head video script about fishing that will go viral.\n\nFormat the script exactly like this:\n\nHook: Begin with an irresistible opening line that stops scrollers in their tracks. Propose a visual hook I can use for maximum effect.\n\nBody: Pinpoint a challenge, offer a solution, and highlight the benefits to keep viewers watching.\n\nCTA: Finish with an unmistakable call to action inviting viewers to follow me for more fishing advice.\n\nRequirements:\n- Make it authentic, practical, and timely\n- Focus on a specific fishing technique, tip, or challenge\n- Include engaging visual suggestions\n- Keep it conversational and energetic\n- Make each script unique and different from previous ones\n- Target both beginner and experienced anglers\n\nGenerate a completely new and unique fishing video script now.",
+        "systemInstructions": "You are an expert fishing content creator and viral video specialist. You understand consumer psychology, attention-grabbing techniques, and what makes fishing content engaging on social media platforms like TikTok, Instagram, and Facebook. Create scripts that are educational, entertaining, and designed to maximize engagement and follower growth.",
+        "messages": null,
+        "temperature": null,
+        "maxTokens": null,
+        "topP": "1",
+        "frequencyPenalty": "0",
+        "presencePenalty": "0",
+        "responseFormat": "text",
+        "jsonSchema": null,
+        "azureOpenAI": {
+          "authProvisionId": "apn_wGhDLvb"
+        },
+        "n": null,
+        "stream": null
+      }
+    },
+    {
+      "namespace": "create_video_content",
+      "props": {
+        "script": "{{steps.generate_fishing_script.$return_value.message}}",
+        "duration": 60,
+        "resolution": "1920x1080",
+        "style": {
+          "__lv": {
+            "label": "Cinematic",
+            "value": "cinematic"
+          }
+        },
+        "character_description": "experienced fishing guide in outdoor gear with consistent branding",
+        "video_service": {
+          "__lv": {
+            "label": "RunwayML Gen-3",
+            "value": "runwayml"
+          }
+        },
+        "video_api_key": {
+          "_enc": "817c7ac8b8050907a1cec846db3fae47204ee088450b99172052e398c92373c4$$bQEnKRtylM+e+erP2tR1cyHUFiwZsc9QlFuNxhq06L95a3Pw7VpMnZX7l8QHr7fHwNywN+tORnWy8dGdrNGSjX8UkQuCNZkhLwIcJ+7Tqdxmpc6Tag3a8huyWS+3FmUz2X0pRn68I6noiHxaS2YmkgnD11j6MlaDpHAxLwB5JM53Q7qevUHnYpiX943PWhw=--oS8PCQp0uAvn1SuH--PDnqPoqZuSOxLscD8+xa2A=="
+        },
+        "runwayml_api_key": {
+          "_enc": "97a5ba670806b272a3140e1c3ba1033f78eff924eb6f63590e02d8c2f549a834$$LDGF2xUAYktg5k1K2tJIa83jSnCll+xtDxr/Zy3KjFUSZz6LutoeH1k41y0qEvGr3bzIcRp+Vt8PP78JXFbhduof0GBet88cTnzVT21N3WRaXR49i875HtHs9Fjng4mS8ZpUA0N64hicyIuyHkCnJ7Tzp1IZBt3Vl8Jt8nn/D0qFd98uyOygfyuQOR/knuY=--EgND0S+Gz6jqTU8y--l1dGVdz8n+nRxeg37jQEPQ=="
+        },
+        "aspect_ratio": {
+          "__lv": {
+            "label": "9:16 (Portrait)",
+            "value": "768:1280"
+          }
+        }
+      }
+    },
+    {
+      "namespace": "review_video_quality",
+      "props": {
+        "videoUrl": "{{steps.create_video_content.$return_value.url}}",
+        "videoTitle": null,
+        "analysisMode": {
+          "__lv": {
+            "label": "Comprehensive Analysis",
+            "value": "comprehensive"
+          }
+        },
+        "qualityThreshold": "Medium",
+        "scriptContent": "{{steps.generate_fishing_script.$return_value.message}}",
+        "expectedDuration": "{{steps.create_video_content.$return_value.metadata.duration}}"
+      }
+    },
+    {
+      "namespace": "post_to_instagram",
+      "props": {
+        "access_token": "",
+        "instagram_user_id": "",
+        "video_url": "{{steps.create_video_content.$return_value.url}}",
+        "caption": "🎣 Check out this amazing fishing tip! 🎣\n\n{{steps.generate_fishing_script.$return_value.message}}\n\nFollow for more fishing content! 🐟",
+        "include_hashtags": true,
+        "additional_hashtags": null
+      }
+    },
+    {
+      "namespace": "post_to_tiktok",
+      "props": {
+        "access_token": "",
+        "video_file": "",
+        "caption": "Check out this amazing fishing moment! 🎣",
+        "custom_hashtags": [],
+        "privacy_level": "PUBLIC_TO_EVERYONE",
+        "allow_duet": true,
+        "allow_stitch": true
+      }
+    },
+    {
+      "namespace": "track_analytics",
+      "props": {
+        "data_store": null,
+        "facebook_access_token": "",
+        "tiktok_access_token": null,
+        "video_posts": [],
+        "analysis_period_days": 30
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "props": {
+        "timer": {
+          "cron": null,
+          "intervalSeconds": 28800,
+          "timezone": "UTC"
+        }
+      }
+    }
+  ],
+  "settings": {
+    "name": "Automated Fishing Video Content Creator",
+    "auto_deploy": true
+  }
+}

@@ -1,0 +1,8 @@
+.env
+.vscode/
+*.log
+*.mp3
+SoundwiseBackups/
+transcripts/
+captions/
+.env
