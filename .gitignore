@@ -1,8 +1,18 @@
+# secrets / env
 .env
+
+# OS/IDE junk
+.DS_Store
+Thumbs.db
 .vscode/
+
+# backups / logs
 *.log
-*.mp3
-SoundwiseBackups/
-transcripts/
+
+# big data (lives outside the repo in ../Data)
 captions/
-.env
+transcripts/
+SoundwiseBackups/
+Audio/
+TextFiles/
+Backups/
