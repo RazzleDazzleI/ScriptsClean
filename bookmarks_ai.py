@@ -1,9 +1,16 @@
 # -*- coding: utf-8 -*-
 import json
 import os
+from dotenv import load_dotenv
 from openai import OpenAI
 
+# Load environment variables from .env file
+load_dotenv()
+
 print("[START] Script started...")
+
+# Initialize OpenAI client with API key from environment
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 
 try:
