@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JS Bundle Security Harness</title>
+  <!-- Strict CSP in meta form for local testing. For production, set headers. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; img-src 'self' data: blob:; connect-src 'self'">
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;padding:0;background:#111;color:#eee}
+    header,footer{padding:12px 16px;background:#181818;position:sticky;top:0}
+    #log{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;padding:12px 16px}
+    .warn{color:#ffcc00}
+    .err{color:#ff6666}
+    .ok{color:#66ff99}
+    .muted{color:#aaa}
+    .pill{display:inline-block;padding:2px 6px;border-radius:999px;background:#333;margin-right:8px}
+    .row{border-top:1px solid #222;padding:10px 0}
+    a{color:#9cf}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px}
+    textarea{width:100%;height:140px;background:#0d0d0d;color:#ddd;border:1px solid #333;border-radius:8px;padding:8px}
+    button{background:#2a2a2a;color:#eee;border:1px solid #444;border-radius:8px;padding:8px 12px;cursor:pointer}
+    button:hover{background:#333}
+    code{background:#1a1a1a;padding:2px 4px;border-radius:4px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="pill">Security Harness</div>
+    <span class="muted">Instruments eval, Function, innerHTML, insertAdjacentHTML, and URL writes.</span>
+  </header>
+
+  <div class="grid">
+    <section>
+      <h3>Smoke tests</h3>
+      <button id="btn-dom">Create test nodes</button>
+      <button id="btn-xss">Attempt XSS payload</button>
+      <button id="btn-clear">Clear log</button>
+      <p class="muted">Place your bundle next to this file and ensure the <code>&lt;script src&gt;</code> below points to it.</p>
+    </section>
+    <section>
+      <h3>Notes</h3>
+      <ul class="muted">
+        <li>All calls are logged to the console and the on‑page log.</li>
+        <li><code>href/src</code> setters are wrapped to block <code>javascript:</code> and report.</li>
+        <li>Use DevTools for network and source maps if available.</li>
+      </ul>
+    </section>
+  </div>
+
+  <div id="log"></div>
+
+  <script>
+    (function(){
+      const logEl = document.getElementById('log');
+      function log(level, msg, extra){
+        const t = new Date().toISOString();
+        const line = `[${t}] [${level}] ${msg}${extra? " :: "+extra:""}`;
+        console[level === "ERROR" ? "error" : level === "WARN" ? "warn" : "log"](line);
+        const div = document.createElement('div');
+        div.className = 'row ' + (level==="ERROR"?'err':level==="WARN"?'warn':'ok');
+        div.textContent = line;
+        logEl.appendChild(div);
+      }
+      function serialize(v){
+        try { return typeof v === 'string' ? v : JSON.stringify(v); }
+        catch { return Object.prototype.toString.call(v); }
+      }
+
+      // Patch eval
+      const _eval = window.eval;
+      window.eval = function(src){
+        log("WARN", "eval() intercepted", (src||"").slice(0,180));
+        return _eval.call(this, src);
+      };
+
+      // Patch Function constructor
+      const _Function = window.Function;
+      window.Function = function(){
+        log("WARN", "new Function() intercepted", Array.from(arguments).join(" | ").slice(0,200));
+        return _Function.apply(this, arguments);
+      };
+
+      // Patch innerHTML and insertAdjacentHTML
+      const elProto = Element.prototype;
+      const _innerHTML = Object.getOwnPropertyDescriptor(elProto, 'innerHTML');
+      if (_innerHTML && _innerHTML.set){
+        Object.defineProperty(elProto, 'innerHTML', {
+          set: function(html){
+            log("WARN", "innerHTML write", (html||"").slice(0,200));
+            return _innerHTML.set.call(this, html);
+          },
+          get: _innerHTML.get,
+          configurable: true
+        });
+      }
+
+      const _insertAdjacentHTML = elProto.insertAdjacentHTML;
+      elProto.insertAdjacentHTML = function(position, html){
+        log("WARN", "insertAdjacentHTML", position + " :: " + (html||"").slice(0,200));
+        return _insertAdjacentHTML.call(this, position, html);
+      };
+
+      // Wrap setAttribute for href/src and direct property sets
+      function wrapUrlSetter(obj, prop){
+        const desc = Object.getOwnPropertyDescriptor(obj, prop);
+        if (desc && desc.set){
+          Object.defineProperty(obj, prop, {
+            set: function(v){
+              const s = String(v||"");
+              if (/^\s*javascript:/i.test(s)){
+                log("ERROR", prop+" assignment blocked", s.slice(0,200));
+                return;
+              }
+              log("INFO", prop+" assignment", s.slice(0,200));
+              return desc.set.call(this, v);
+            },
+            get: desc.get,
+            configurable: true
+          });
+        }
+      }
+      wrapUrlSetter(HTMLAnchorElement.prototype, 'href');
+      wrapUrlSetter(HTMLImageElement.prototype, 'src');
+      wrapUrlSetter(HTMLScriptElement.prototype, 'src');
+
+      const _setAttribute = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function(name, value){
+        if (/^(href|src)$/i.test(name||"")){
+          const s = String(value||"");
+          if (/^\s*javascript:/i.test(s)){
+            log("ERROR", `setAttribute(${name}) blocked`, s.slice(0,200));
+            return;
+          }
+          log("INFO", `setAttribute(${name})`, s.slice(0,200));
+        }
+        return _setAttribute.call(this, name, value);
+      };
+
+      // Buttons
+      document.getElementById('btn-dom').onclick = function(){
+        const a = document.createElement('a');
+        a.href = '#ok';
+        a.textContent = 'ok link';
+        document.body.appendChild(a);
+        const d = document.createElement('div');
+        d.insertAdjacentHTML('beforeend', '<em>sample</em>');
+        document.body.appendChild(d);
+        log("INFO", "Created sample nodes");
+      };
+      document.getElementById('btn-xss').onclick = function(){
+        const d = document.createElement('div');
+        d.innerHTML = '<img src=x onerror=alert(1)>';
+        document.body.appendChild(d);
+        log("INFO", "Injected XSS sample; if alert fires, sinks are reachable.");
+      };
+      document.getElementById('btn-clear').onclick = function(){
+        logEl.innerHTML = '';
+      };
+    })();
+  </script>
+
+  <!-- Load your bundle LAST so our patches take effect first -->
+  <script src="./New Text Document (2).txt"></script>
+
+  <footer>
+    <small class="muted">Open DevTools → Console to see full logs. Edit the script src to match your bundle file name.</small>
+  </footer>
+</body>
+</html>

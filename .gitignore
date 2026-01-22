@@ -16,3 +16,15 @@ SoundwiseBackups/
 Audio/
 TextFiles/
 Backups/
+
+# Large files
+*.iso
+ISO/parts/
+
+# Generated output
+ThomasDeLauer_Segments/
+Thomas DeLauer.txt
+RuleNames-*.txt
+
+# Backup files
+*.bak*

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JS Bundle Security Harness — Extended</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; object-src 'none'; img-src 'self' data: blob:; connect-src 'self' https:; report-uri /csp-report-endpoint">
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;padding:0;background:#0b0b0b;color:#ddd}
+    header{padding:12px 16px;background:#101010;position:sticky;top:0}
+    #log{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;padding:12px 16px;max-height:45vh;overflow:auto}
+    .row{border-top:1px solid #222;padding:8px 0}
+    .err{color:#ff6666} .warn{color:#ffcc66} .info{color:#66ccff}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
+    textarea{width:100%;height:140px;background:#060606;color:#ddd;border:1px solid #222;border-radius:6px;padding:8px}
+    button{background:#151515;color:#ddd;border:1px solid #222;border-radius:6px;padding:8px 10px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Security Harness — Extended</strong>
+    <div style="font-size:12px;color:#999">Instruments eval, Function, innerHTML, insertAdjacentHTML, URL writes, XHR/fetch and CSP violations.</div>
+  </header>
+
+  <div class="grid">
+    <div>
+      <h3>Actions</h3>
+      <button id="btn-dom">Create test nodes</button>
+      <button id="btn-xss">Attempt XSS payload</button>
+      <button id="btn-xhr">Send test XHR</button>
+      <button id="btn-fetch">Send test fetch</button>
+      <button id="btn-clear">Clear log</button>
+      <p style="font-size:12px;color:#999">Place your bundle in the same folder and edit the script src below if needed.</p>
+    </div>
+    <div>
+      <h3>Network / CSP</h3>
+      <div style="font-size:13px;color:#ccc">Requests will be logged. CSP violations will be shown below.</div>
+      <textarea id="csplog" readonly></textarea>
+    </div>
+  </div>
+
+  <div id="log"></div>
+
+  <script>
+  (function(){
+    const logEl = document.getElementById('log');
+    const cspEl = document.getElementById('csplog');
+    function appendLog(cls, msg){
+      const div = document.createElement('div');
+      div.className = 'row '+cls;
+      div.textContent = msg;
+      logEl.appendChild(div);
+      console.log(msg);
+    }
+    function appendCSP(msg){
+      cspEl.value = new Date().toISOString() + " :: " + msg + "\\n" + cspEl.value;
+      console.warn("CSP:", msg);
+    }
+
+    // Basic intercepts (eval, Function, innerHTML, insertAdjacentHTML) same as before
+    const _eval = window.eval;
+    window.eval = function(src){ appendLog('warn','eval() intercepted: '+String(src).slice(0,200)); return _eval.call(this, src); };
+
+    const _Function = window.Function;
+    window.Function = function(){ appendLog('warn','new Function() intercepted: '+Array.from(arguments).join(" | ").slice(0,200)); return _Function.apply(this, arguments); };
+
+    const elProto = Element.prototype;
+    const __inner = Object.getOwnPropertyDescriptor(elProto, 'innerHTML');
+    if (__inner && __inner.set){
+      Object.defineProperty(elProto, 'innerHTML', {
+        set: function(html){ appendLog('warn','innerHTML write: '+String(html).slice(0,200)); return __inner.set.call(this, html); },
+        get: __inner.get, configurable:true
+      });
+    }
+    const _insertAdjacentHTML = elProto.insertAdjacentHTML;
+    elProto.insertAdjacentHTML = function(pos,html){ appendLog('warn','insertAdjacentHTML '+pos+': '+String(html).slice(0,200)); return _insertAdjacentHTML.call(this,pos,html); };
+
+    // URL setters and attribute wrapper
+    function wrapUrlSetter(obj, prop){
+      const desc = Object.getOwnPropertyDescriptor(obj, prop);
+      if (desc && desc.set){
+        Object.defineProperty(obj, prop, {
+          set: function(v){ const s=String(v||''); if (/^\s*javascript:/i.test(s)){ appendLog('err', prop+' assignment blocked: '+s.slice(0,200)); return; } appendLog('info', prop+' assignment: '+s.slice(0,200)); return desc.set.call(this, v); },
+          get: desc.get, configurable:true
+        });
+      }
+    }
+    wrapUrlSetter(HTMLAnchorElement.prototype,'href');
+    wrapUrlSetter(HTMLImageElement.prototype,'src');
+    wrapUrlSetter(HTMLScriptElement.prototype,'src');
+    const _setAttribute = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(n,v){ if (/^(href|src)$/i.test(n||'')){ const s=String(v||''); if (/^\s*javascript:/i.test(s)){ appendLog('err', 'setAttribute('+n+') blocked: '+s.slice(0,200)); return; } appendLog('info','setAttribute('+n+') -> '+s.slice(0,200)); } return _setAttribute.call(this,n,v); };
+
+    // XHR override
+    (function(){
+      const NativeXHR = XMLHttpRequest;
+      function XHRProxy(){
+        const xhr = new NativeXHR();
+        const _open = xhr.open;
+        xhr.open = function(method,url){
+          try{ appendLog('info','XHR open '+method+' '+String(url).slice(0,300)); }catch(e){}
+          return _open.apply(this, arguments);
+        };
+        const _send = xhr.send;
+        xhr.send = function(body){ appendLog('info','XHR send body len '+(body? (body.length||String(body).length):0)); return _send.apply(this, arguments); };
+        return xhr;
+      }
+      XHRProxy.prototype = NativeXHR.prototype;
+      window.XMLHttpRequest = XHRProxy;
+    })();
+
+    // fetch override
+    (function(){
+      const _fetch = window.fetch;
+      window.fetch = function(input, init){
+        try{ const url = (typeof input==='string'?input: (input && input.url)||'<unknown>'); appendLog('info','fetch '+String(url).slice(0,300)); }catch(e){}
+        return _fetch.apply(this, arguments).then(res=>{ appendLog('info','fetch response '+res.status+' '+res.type+' '+(res.url||'')); return res; });
+      };
+    })();
+
+    // CSP violation listener (client-side)
+    window.addEventListener("securitypolicyviolation", function(e){
+      const msg = 'CSP Violation: directive='+e.blockedDirective+' effective='+e.effectiveDirective+' uri='+e.blockedURI+' violated by '+(e.sample||'<sample>')+' source-file='+ (e.sourceFile||'') + ' line='+e.lineNumber;
+      appendCSP(msg);
+      appendLog('err', msg);
+    });
+
+    // Provide a fake report endpoint for local testing (captures POSTs to /csp-report-endpoint)
+    if (!window.__csp_report_installed){
+      window.__csp_report_installed = true;
+      // Intercept fetch to fake the report endpoint locally
+      const origFetch = window.fetch;
+      window.fetch = function(input, init){
+        try{
+          const url = typeof input === 'string' ? input : input && input.url;
+          if (url && url.endsWith('/csp-report-endpoint')){
+            const body = (init && init.body) || '<no-body>';
+            appendCSP('Received CSP report (intercepted): '+ (typeof body==='string'?body:JSON.stringify(body)).slice(0,200));
+            // Return a fake Response
+            return Promise.resolve(new Response('{}',{status:204,statusText:'No Content'}));
+          }
+        }catch(e){}
+        return origFetch.apply(this, arguments);
+      };
+    }
+
+    // Buttons handlers
+    document.getElementById('btn-dom').onclick = function(){ const a=document.createElement('a'); a.href='#ok'; a.textContent='ok link'; document.body.appendChild(a); const d=document.createElement('div'); d.insertAdjacentHTML('beforeend','<em>sample</em>'); document.body.appendChild(d); appendLog('info','Created sample nodes'); };
+    document.getElementById('btn-xss').onclick = function(){ const d=document.createElement('div'); d.innerHTML = '<img src=x onerror=console.warn(\"xss-alert\")>'; document.body.appendChild(d); appendLog('info','Injected XSS sample'); };
+    document.getElementById('btn-xhr').onclick = function(){ try{ const xr=new XMLHttpRequest(); xr.open('GET','/test-xhr', true); xr.onload = function(){ appendLog('info','XHR loaded: '+this.status); }; xr.onerror = function(){ appendLog('err','XHR error'); }; xr.send(); }catch(e){ appendLog('err','XHR send failed: '+e.message); } };
+    document.getElementById('btn-fetch').onclick = function(){ fetch('/test-fetch').then(r=>appendLog('info','fetch done '+r.status)).catch(e=>appendLog('err','fetch failed '+e.message)); };
+    document.getElementById('btn-clear').onclick = function(){ logEl.innerHTML=''; cspEl.value=''; };
+
+    // expose small API for manual inspection
+    window.__harness = { log: appendLog, csp: appendCSP };
+  })();
+  </script>
+
+  <!-- Load the user bundle last so our instrumentation runs first -->
+  <script src="./New Text Document (2).txt"></script>
+
+  <footer style="padding:12px;background:#080808;color:#666;font-size:12px">Open DevTools → Console for details. Edit the script src to match your bundle filename.</footer>
+</body>
+</html>

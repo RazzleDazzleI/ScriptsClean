@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+logs/
+*.log
+
+# Installers
+assets/installers/
+assets/office/
+assets/drivers/
+
+# VSCode
+.vscode/
